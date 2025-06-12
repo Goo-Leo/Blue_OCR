@@ -1,0 +1,4 @@
+*.jpg
+*.png
+cmake-build-debug-visual-studio
+.idea
