@@ -5,41 +5,39 @@
 #ifndef INTERFACE_H
 #define INTERFACE_H
 
-#include <Windows.h>
-#include <iostream>
+#include <windows.h>
+#include <gdiplus.h>
+#include <string>
 
-using namespace System;
-using namespace System::Drawing;
-using namespace System::Drawing::Imaging;
-using namespace System::Windows::Forms;
+#pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
+
+using namespace Gdiplus;
 
 class ScreenCapture {
 private:
-    static HWND selectionWindow;
-    static RECT selectionRect;
-    static bool isSelecting;
-    static POINT startPoint;
-    static POINT currentPoint;
+    HWND overlayWnd;
+    bool isSelecting;
+    POINT startPoint;
+    POINT endPoint;
+    RECT selectedRect;
 
-    static bool CaptureRegion(int x, int y, int width, int height, const std::string& filename)
-    {
-        HDC hScreenDC = GetDC(NULL);
-        HDC hMemDC = CreateCompatibleDC(hScreenDC);
+    // 私有辅助函数
+    int GetEncoderClsid(const WCHAR* format, CLSID* pClsid);
+    bool CreateOverlayWindow();
 
-        HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, width, height);
-        HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemDC, hBitmap);
+public:
 
-        BitBlt(hMemDC, 0, 0, width, height, hScreenDC, x, y, SRCCOPY);
+    ScreenCapture();
 
-        bool result = SaveBitmapToFile(hBitmap, filename);
+    ~ScreenCapture();
 
-        SelectObject(hMemDC, hOldBitmap);
-        DeleteObject(hBitmap);
-        DeleteDC(hMemDC);
-        ReleaseDC(NULL, hScreenDC);
+    static LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-        return result;
-    }
-}
+    bool StartCapture();
+    bool CaptureScreenRegion(const RECT& rect, const std::wstring& filename);
+    RECT GetSelectedRect() const;
+};
 
 #endif //INTERFACE_H
