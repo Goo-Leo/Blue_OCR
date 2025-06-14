@@ -6,14 +6,12 @@
 #define INTERFACE_H
 
 #include <windows.h>
-#include <gdiplus.h>
 #include <string>
+#include <opencv2/opencv.hpp>
 
-#pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 
-using namespace Gdiplus;
 
 class ScreenCapture {
 private:
@@ -23,12 +21,10 @@ private:
     POINT endPoint;
     RECT selectedRect;
 
-    // 私有辅助函数
     int GetEncoderClsid(const WCHAR* format, CLSID* pClsid);
     bool CreateOverlayWindow();
 
 public:
-
     ScreenCapture();
 
     ~ScreenCapture();
@@ -36,8 +32,10 @@ public:
     static LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     bool StartCapture();
-    bool CaptureScreenRegion(const RECT& rect, const std::wstring& filename);
+
     RECT GetSelectedRect() const;
+
+    cv::Mat CaptureScreenRegion(const RECT& rect);
 };
 
 #endif //INTERFACE_H

@@ -1,7 +1,6 @@
-//
+﻿//
 // Created by 10633 on 2025/6/12.
 //
-// ScreenCapture.cpp
 #include "interface.h"
 #include <iostream>
 
@@ -16,31 +15,6 @@ ScreenCapture::~ScreenCapture() {
         DestroyWindow(overlayWnd);
         overlayWnd = nullptr;
     }
-}
-
-int ScreenCapture::GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
-    UINT num = 0;
-    UINT size = 0;
-    ImageCodecInfo* pImageCodecInfo = NULL;
-
-    GetImageEncodersSize(&num, &size);
-    if (size == 0) return -1;
-
-    pImageCodecInfo = (ImageCodecInfo*)(malloc(size));
-    if (pImageCodecInfo == NULL) return -1;
-
-    GetImageEncoders(num, size, pImageCodecInfo);
-
-    for (UINT j = 0; j < num; ++j) {
-        if (wcscmp(pImageCodecInfo[j].MimeType, format) == 0) {
-            *pClsid = pImageCodecInfo[j].Clsid;
-            free(pImageCodecInfo);
-            return j;
-        }
-    }
-
-    free(pImageCodecInfo);
-    return -1;
 }
 
 LRESULT CALLBACK ScreenCapture::OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -71,10 +45,10 @@ LRESULT CALLBACK ScreenCapture::OverlayWndProc(HWND hwnd, UINT msg, WPARAM wPara
             pThis->endPoint.x = LOWORD(lParam);
             pThis->endPoint.y = HIWORD(lParam);
 
-            pThis->selectedRect.left = min(pThis->startPoint.x, pThis->endPoint.x);
-            pThis->selectedRect.top = min(pThis->startPoint.y, pThis->endPoint.y);
-            pThis->selectedRect.right = max(pThis->startPoint.x, pThis->endPoint.x);
-            pThis->selectedRect.bottom = max(pThis->startPoint.y, pThis->endPoint.y);
+            pThis->selectedRect.left = std::min(pThis->startPoint.x, pThis->endPoint.x);
+            pThis->selectedRect.top = std::min(pThis->startPoint.y, pThis->endPoint.y);
+            pThis->selectedRect.right = std::max(pThis->startPoint.x, pThis->endPoint.x);
+            pThis->selectedRect.bottom = std::max(pThis->startPoint.y, pThis->endPoint.y);
 
             ReleaseCapture();
             PostMessage(hwnd, WM_CLOSE, 0, 0);
@@ -91,10 +65,10 @@ LRESULT CALLBACK ScreenCapture::OverlayWndProc(HWND hwnd, UINT msg, WPARAM wPara
                 HPEN oldPen = (HPEN)SelectObject(hdc, pen);
 
                 Rectangle(hdc,
-                    min(pThis->startPoint.x, pThis->endPoint.x),
-                    min(pThis->startPoint.y, pThis->endPoint.y),
-                    max(pThis->startPoint.x, pThis->endPoint.x),
-                    max(pThis->startPoint.y, pThis->endPoint.y));
+                    std::min(pThis->startPoint.x, pThis->endPoint.x),
+                    std::min(pThis->startPoint.y, pThis->endPoint.y),
+                    std::max(pThis->startPoint.x, pThis->endPoint.x),
+                    std::max(pThis->startPoint.y, pThis->endPoint.y));
 
                 SelectObject(hdc, oldPen);
                 DeleteObject(pen);
@@ -151,51 +125,68 @@ bool ScreenCapture::CreateOverlayWindow() {
     }
 
     SetLayeredWindowAttributes(overlayWnd, 0, 50, LWA_ALPHA);
-
     SetWindowLongPtr(overlayWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-
     ShowWindow(overlayWnd, SW_SHOW);
     UpdateWindow(overlayWnd);
 
     return true;
 }
 
-// 捕获屏幕区域
-bool ScreenCapture::CaptureScreenRegion(const RECT& rect, const std::wstring& filename) {
+cv::Mat ScreenCapture::CaptureScreenRegion(const RECT& rect) {
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
 
     if (width <= 0 || height <= 0) {
-        return false;
+        return cv::Mat();
     }
 
-    // 获取屏幕DC
     HDC screenDC = GetDC(NULL);
     HDC memDC = CreateCompatibleDC(screenDC);
-    HBITMAP bitmap = CreateCompatibleBitmap(screenDC, width, height);
-    HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, bitmap);
 
-    // 复制屏幕内容到位图
-    BitBlt(memDC, 0, 0, width, height, screenDC, rect.left, rect.top, SRCCOPY);
+    BITMAPINFOHEADER bmi = {0};
+    bmi.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.biWidth = width;
+    bmi.biHeight = -height;
+    bmi.biPlanes = 1;
+    bmi.biBitCount = 32;
+    bmi.biCompression = BI_RGB;
 
-    // 使用GDI+保存为PNG
-    Bitmap* gdipBitmap = new Bitmap(bitmap, NULL);
-
-    CLSID pngClsid;
-    if (GetEncoderClsid(L"image/png", &pngClsid) >= 0) {
-        gdipBitmap->Save(filename.c_str(), &pngClsid, NULL);
+    void* pBits = nullptr;
+    HBITMAP bitmap = CreateDIBSection(screenDC, (BITMAPINFO*)&bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
+    if (!bitmap) {
+        DeleteDC(memDC);
+        ReleaseDC(NULL, screenDC);
+        return cv::Mat();
     }
 
-    delete gdipBitmap;
+    HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, bitmap);
+    BitBlt(memDC, 0, 0, width, height, screenDC, rect.left, rect.top, SRCCOPY);
+
+    // 创建Mat并复制数据(Win32默认是RGB格式，但opencv默认是BGR)
+    cv::Mat mat(height, width, CV_8UC3);
+    BYTE* src = static_cast<BYTE*>(pBits);
+    int srcStride = width * 4;
+
+    for (int y = 0; y < height; y++) {
+        BYTE* srcRow = src + y * srcStride;
+        BYTE* dstRow = mat.ptr<BYTE>(y);
+        for (int x = 0; x < width; x++) {
+            dstRow[0] = srcRow[0];
+            dstRow[1] = srcRow[1];
+            dstRow[2] = srcRow[2];
+            srcRow += 4;
+            dstRow += 3;
+        }
+    }
+
     SelectObject(memDC, oldBitmap);
     DeleteObject(bitmap);
     DeleteDC(memDC);
     ReleaseDC(NULL, screenDC);
 
-    return true;
+    return mat;
 }
 
-// 开始截图选择
 bool ScreenCapture::StartCapture() {
     if (!CreateOverlayWindow()) {
         return false;
@@ -210,7 +201,6 @@ bool ScreenCapture::StartCapture() {
     return true;
 }
 
-// 获取选择的区域
 RECT ScreenCapture::GetSelectedRect() const {
     return selectedRect;
 }
