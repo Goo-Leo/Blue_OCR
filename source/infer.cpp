@@ -86,22 +86,24 @@ std::vector<DetectionBox> PPOCRDetector::postProcess(const cv::Mat &prediction) 
 
             cv::Point2f vertices[4];
             rect.points(vertices);
-            std::vector<cv::Point2f> sorted_vertices(vertices, vertices + 4);
-            sortVerticesClockwise(sorted_vertices);
+            // std::vector<cv::Point2f> sorted_vertices(vertices, vertices + 4);
+            // sortVerticesClockwise(sorted_vertices);
 
-            std::vector<cv::Point2f> expanded_box = unclipBox(sorted_vertices.data(), 4);
+            std::vector<cv::Point2f> expanded_box = unclipBox(vertices, 4);
             if (expanded_box.empty() || expanded_box.size() != 4) {
-                expanded_box.assign(sorted_vertices.begin(), sorted_vertices.end());
+                expanded_box.assign(vertices, vertices + 4);
             }
 
             DetectionBox det_box;
             det_box.score = score;
             for (const auto &point: expanded_box) {
-                det_box.points.push_back(cv::Point2f(
+                det_box.points.emplace_back(
                     std::clamp(point.x * scale_x, 0.0f, static_cast<float>(origin_image->cols - 1)),
                     std::clamp(point.y * scale_y, 0.0f, static_cast<float>(origin_image->rows - 1))
-                ));
+                );
             }
+            // std::vector<cv::Point2f> sorted_vertices(det_box.points[0], vertices + 4);
+            sortVerticesClockwise(det_box.points);
 
             // Validate box geometry
             if (isValidBox(det_box.points)) {
@@ -211,12 +213,11 @@ void PPOCRDetector::drawResults(cv::Mat &image, const std::vector<DetectionBox> 
         if (box.points.size() >= 4) {
             std::vector<cv::Point> int_points;
             for (const auto &pt: box.points) {
-                int_points.push_back(cv::Point(static_cast<int>(pt.x), static_cast<int>(pt.y)));
+                int_points.emplace_back(static_cast<int>(pt.x), static_cast<int>(pt.y));
             }
 
-            // 绘制多边形
             cv::polylines(image, std::vector<std::vector<cv::Point> >{int_points},
-                          true, cv::Scalar(0, 255, 0), 2);
+                          true, cv::Scalar(0, 255, 0), 1);
 
             std::string score_text = std::to_string(box.score);
             score_text = score_text.substr(0, 4);
@@ -244,40 +245,170 @@ std::vector<DetectionBox> PPOCRDetector::detect(const std::string &output_path =
 }
 
 
-PPOCRRecognizer::PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox> det_resluts,
+PPOCRRecognizer::PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox> *det_resluts,
                                  ov::InferRequest *infer_request) {
+    this->origin_image = origin_image;
     boxes = det_resluts;
     request = infer_request;
-    text_num = boxes.size();
-    std::sort(boxes.begin(), boxes.end(),
+    text_num = boxes->size();
+
+    std::sort(boxes->begin(), boxes->end(),
               [](const DetectionBox &a, const DetectionBox &b) {
                   return std::tie(a.points[0].y, a.points[0].x) < std::tie(b.points[0].y, b.points[0].x);
               });
 
-    if (boxes.size() > 1) {
+    if (det_resluts->size() > 1) {
         for (size_t i = 0; i < text_num - 1; ++i) {
-            if (std::abs(boxes[i + 1].points[0].y - boxes[i].points[0].y) < 10.0f &&
-                (boxes[i + 1].points[0].x < boxes[i].points[0].x)) {
-                std::swap(boxes[i], boxes[i + 1]);
+            if (std::abs((*boxes)[i + 1].points[0].y - (*boxes)[i].points[0].y) < 10.0f &&
+                ((*boxes)[i + 1].points[0].x < (*boxes)[i].points[0].x)) {
+                std::swap((*boxes)[i], (*boxes)[i + 1]);
             }
         }
     }
 }
 
-// std::vector<rec_result> PPOCRRecognizer::PPOCRRecognizer::Recognizer() {
-//     for (int i = 0; i < text_num; ++i) {
-//         cv::Rect bounding_box = cv::boundingRect(boxes[i].points);
-//         // text_images.push_back();
-//     }
-//
-//
-//     request->set_callback([&](std::exception_ptr ex_ptr) {
-//         if (!ex_ptr) {
-//             // all done. Output data can be processed.
-//             // You can fill the input data and run inference one more time:
-//             request->start_async();
-//         } else {
-//             // Something wrong, you can analyze exception_ptr
-//         }
-//     });
-// }
+/** extract text images for reco input
+ *
+ */
+void PPOCRRecognizer::extractSubimage() {
+    for (int i = 0; i < text_num; ++i) {
+        if ((*boxes)[i].points.size() != 4) {
+            throw std::runtime_error("Exactly 4 points required");
+        }
+
+        const float width = cv::norm((*boxes)[i].points[1] - (*boxes)[i].points[0]);
+        const float height = cv::norm((*boxes)[i].points[2] - (*boxes)[i].points[1]);
+
+        std::vector<cv::Point2f> dstPoints = {
+            {0, 0},
+            {width, 0},
+            {width, height},
+            {0, height}
+        };
+
+        cv::Mat transform = cv::getPerspectiveTransform((*boxes)[i].points, dstPoints);
+
+        cv::Mat dst;
+        cv::warpPerspective(
+            *origin_image, dst, transform,
+            cv::Size(static_cast<int>(width), static_cast<int>(height)),
+            cv::INTER_LINEAR, cv::BORDER_CONSTANT
+        );
+
+        text_images.emplace_back(dst);
+    }
+}
+
+cv::Mat PPOCRRecognizer::normalize(const cv::Mat &input_img, float max_wh_ratio) {
+    const int imgC = 3;
+    const int imgH = 48;
+    int imgW = static_cast<int>(32 * max_wh_ratio);
+
+    float h = input_img.rows;
+    float w = input_img.cols;
+    float ratio = w / h;
+    int resized_w = (std::ceil(imgH * ratio) > imgW) ? imgW : static_cast<int>(std::ceil(imgH * ratio));
+
+    cv::Mat resized_img;
+    cv::resize(input_img, resized_img, cv::Size(resized_w, imgH), 0, 0, cv::INTER_LINEAR);
+
+    cv::Mat float_img;
+    resized_img.convertTo(float_img, CV_32F);
+    float_img = float_img / 255.0;
+    float_img = (float_img - 0.5) / 0.5;
+
+    cv::Mat padded_img = cv::Mat::zeros(imgH, imgW, CV_32FC3);
+    cv::Rect roi(0, 0, resized_w, imgH);
+    float_img.copyTo(padded_img(roi));
+
+    std::vector<cv::Mat> channels;
+    cv::split(padded_img, channels);
+
+    cv::Mat chw_img;
+    cv::vconcat(channels, chw_img);
+
+    return chw_img;
+}
+
+std::vector<cv::Mat> PPOCRRecognizer::batch_process_images(
+    const std::vector<cv::Mat>& img_crop_list,
+    const std::vector<int>& indices,
+    int start_index) {
+
+    int end_index = std::min(static_cast<int>(img_crop_list.size()), start_index + batch_num);
+
+    float max_wh_ratio = 0.0f;
+    for (int i = start_index; i < end_index; i++) {
+        int idx = indices[i];
+        float h = img_crop_list[idx].rows;
+        float w = img_crop_list[idx].cols;
+        float wh_ratio = w / h;
+        if (wh_ratio > max_wh_ratio) {
+            max_wh_ratio = wh_ratio;
+        }
+    }
+
+    std::vector<cv::Mat> batch;
+    for (int i = start_index; i < end_index; i++) {
+        int idx = indices[i];
+        cv::Mat processed = normalize(img_crop_list[idx], max_wh_ratio);
+        batch.push_back(processed);
+    }
+
+    return batch;
+}
+
+std::vector<rec_result> PPOCRRecognizer::process_text_regions(
+    const std::vector<cv::Mat> &img_crop_list,
+    int batch_size = 6) {
+    // 1. 计算所有图像的宽高比并排序
+    std::vector<std::pair<float, int>> wh_ratios;
+    for (int i = 0; i < img_crop_list.size(); i++) {
+        float h = img_crop_list[i].rows;
+        float w = img_crop_list[i].cols;
+        wh_ratios.emplace_back(w / h, i);
+    }
+
+    std::sort(wh_ratios.begin(), wh_ratios.end());
+
+    std::vector<int> indices;
+    for (const auto& pair : wh_ratios) {
+        indices.push_back(pair.second);
+    }
+
+    for (int beg_img_no = 0; beg_img_no < img_crop_list.size(); beg_img_no += batch_size) {
+        std::vector<cv::Mat> batch = batch_process_images(
+            img_crop_list, indices, beg_img_no);
+
+
+        int batch_count = batch.size();
+        int channels = 3;
+        int height = 48;
+        int width = batch[0].cols; // 所有图像宽度相同
+
+        // 创建连续内存存储批处理数据
+        batch_tensor.(batch_count * channels * height, width, CV_32F);
+
+        // 将每个处理后的图像复制到批处理张量中
+        for (int i = 0; i < batch_count; i++) {
+            cv::Mat roi = batch_tensor.rowRange(
+                i * channels * height,
+                (i + 1) * channels * height);
+            batch[i].copyTo(roi);
+        }
+    }
+}
+
+/**
+ *
+ * @return recognize results: texts and scores
+ */
+std::vector<rec_result> PPOCRRecognizer::recognize() {
+    std::vector<rec_result> results;
+
+    extractSubimage();
+
+    process_text_regions(text_images);
+
+    return results;
+}

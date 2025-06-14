@@ -42,11 +42,11 @@ private:
 
     std::vector<cv::Point2f> unclipBox(cv::Point2f *vertices, size_t num_vertices);
 
-    void sortVerticesClockwise(std::vector<cv::Point2f> &vertices);
+    static void sortVerticesClockwise(std::vector<cv::Point2f> &vertices);
 
-    bool isValidBox(const std::vector<cv::Point2f> &points);
+    static bool isValidBox(const std::vector<cv::Point2f> &points);
 
-    void drawResults(cv::Mat &image, const std::vector<DetectionBox> &boxes);
+    static void drawResults(cv::Mat &image, const std::vector<DetectionBox> &boxes);
 
 public:
     PPOCRDetector(cv::Mat *image, ov::InferRequest *infer_request) {
@@ -65,13 +65,24 @@ private:
     ov::InferRequest *request;
     cv::Mat *origin_image;
     std::vector<cv::Mat> text_images;
-    std::vector<DetectionBox> boxes;
+    std::vector<DetectionBox> *boxes;
+    cv::Mat batch_tensor;
 
 public:
-    PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox> det_resluts,
+    PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox> *det_resluts,
                     ov::InferRequest *infer_request);
 
-    std::vector<rec_result> Recognizer();
+    void extractSubimage();
+
+    cv::Mat normalize(const cv::Mat &input_img, float max_wh_ratio);
+
+    std::vector<cv::Mat> batch_process_images(const std::vector<cv::Mat> &img_crop_list,
+                                              const std::vector<int> &indices,
+                                              int start_index);
+
+    std::vector<rec_result> process_text_regions(const std::vector<cv::Mat> &img_crop_list, int batch_size);
+
+    std::vector<rec_result> recognize();
 };
 
 
