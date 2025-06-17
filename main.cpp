@@ -1,4 +1,5 @@
 ﻿#include <fstream>
+#include <shlwapi.h>
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <openvino/openvino.hpp>
@@ -49,12 +50,9 @@ int main() {
         std::ofstream out("ocr_results.txt", std::ios::out | std::ios::binary);
         out << "\xEF\xBB\xBF";
 
-        for (const auto& text : texts) {
+        for (const auto &text: texts) {
             out << text.text << " (score: " << text.score << ")" << std::endl;
         }
-
-        out.close();
-
     } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;

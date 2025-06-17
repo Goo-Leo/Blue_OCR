@@ -38,4 +38,10 @@ public:
     cv::Mat CaptureScreenRegion(const RECT& rect);
 };
 
+
+// class Show {
+//     private:
+//     void show_result();
+// };
+
 #endif //INTERFACE_H

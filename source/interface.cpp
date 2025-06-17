@@ -204,3 +204,27 @@ bool ScreenCapture::StartCapture() {
 RECT ScreenCapture::GetSelectedRect() const {
     return selectedRect;
 }
+
+
+// void Show::show_result() {
+//     std::ofstream out("ocr_results.txt", std::ios::out | std::ios::binary);
+//     out << "\xEF\xBB\xBF";
+//
+//     for (const auto& text : texts) {
+//         out << text.text << " (score: " << text.score << ")" << std::endl;
+//     }
+// wchar_t exePath[MAX_PATH];
+// GetModuleFileNameW(NULL, exePath, MAX_PATH);
+// PathRemoveFileSpecW(exePath);
+//
+// wchar_t filePath[MAX_PATH];
+// PathCombineW(filePath, exePath, L"ocr_results.txt");
+// HINSTANCE result = ShellExecuteW(
+//     NULL,
+//     L"open",
+//     L"notepad.exe",
+//     filePath,
+//     NULL,
+//     SW_SHOWNORMAL
+// );
+// }

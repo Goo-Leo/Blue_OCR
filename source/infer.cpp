@@ -356,7 +356,6 @@ std::vector<BatchUnit> PPOCRRecognizer::prepare_batches() {
 
         result.push_back({tensor, indices}); // Include indices for result mapping
     }
-    std::cout << "batch 1 shape: " << result[0].input_tensor.get_shape() << std::endl;
 
     return result;
 }
@@ -469,18 +468,20 @@ std::vector<rec_result> PPOCRRecognizer::recognize() {
     extractSubimage();
 
     auto batches = prepare_batches();
+    auto start_time = std::chrono::high_resolution_clock::now();
 
     auto async_requests = run_batches_async(batches);
 
     // Process results from all batches
     for (size_t batch_idx = 0; batch_idx < async_requests.size(); ++batch_idx) {
         async_requests[batch_idx].wait();
-
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         auto out_tensor = async_requests[batch_idx].get_output_tensor();
         const float *output_data = out_tensor.data<float>();
         auto shape = out_tensor.get_shape(); // [N, T, C]
 
-        std::cout << "output tensor shape:"<<shape << std::endl;
+        std::cout << "Inference time: "<< duration << std::endl;
         // Decode current batch
         auto batch_results = decode_ctc_batch(output_data, shape, ctc_dict);
 
