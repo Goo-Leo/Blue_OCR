@@ -20,6 +20,18 @@ struct DetectionBox {
     float score;
 };
 
+struct BatchUnit {
+    ov::Tensor input_tensor;
+    std::vector<int> indices;
+};
+
+
+// struct AsyncBatchResult {
+//     ov::InferRequest request;
+//     std::vector<int> indices;
+// };
+
+
 struct rec_result {
     std::string text;
     float score;
@@ -62,25 +74,29 @@ class PPOCRRecognizer {
 private:
     int text_num;
     const int batch_num = 6;
-    ov::InferRequest *request;
-    cv::Mat *origin_image;
-    std::vector<cv::Mat> text_images;
-    std::vector<DetectionBox> *boxes;
-    cv::Mat batch_tensor;
 
+    std::vector<DetectionBox> *boxes;
+    cv::Mat *origin_image;
+    ov::CompiledModel *model;
+
+    std::vector<cv::Mat> text_images;
+    std::vector<std::string> ctc_dict;
 public:
     PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox> *det_resluts,
-                    ov::InferRequest *infer_request);
+                    ov::CompiledModel *compiled_model);
 
     void extractSubimage();
 
-    cv::Mat normalize(const cv::Mat &input_img, float max_wh_ratio);
+    cv::Mat resize_img(const cv::Mat &img, float max_wh_ratio);
 
-    std::vector<cv::Mat> batch_process_images(const std::vector<cv::Mat> &img_crop_list,
-                                              const std::vector<int> &indices,
-                                              int start_index);
+    std::vector<BatchUnit> prepare_batches();
 
-    std::vector<rec_result> process_text_regions(const std::vector<cv::Mat> &img_crop_list, int batch_size);
+    std::vector<ov::InferRequest> run_batches_async(const std::vector<BatchUnit> &batches);
+
+    std::vector<std::string> load_ctc_dict(const std::string &path);
+
+    std::vector<rec_result> decode_ctc_batch(const float *data, const ov::Shape &shape,
+                                             const std::vector<std::string> &ctc_dict);
 
     std::vector<rec_result> recognize();
 };

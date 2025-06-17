@@ -2,3 +2,4 @@
 *.png
 cmake-build-debug-visual-studio
 .idea
+/ocr_results.txt

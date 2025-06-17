@@ -1,9 +1,15 @@
 ﻿//
 // Created by 10633 on 2025/6/12.
 //
-#include "../include/infer.h"
+#include "infer.h"
+
+#include <fstream>
 #include <iostream>
 
+
+// ====================================================
+//                      Detector
+// ====================================================
 
 cv::Mat PPOCRDetector::inference() {
     try {
@@ -132,7 +138,7 @@ std::vector<cv::Point2f> PPOCRDetector::unclipBox(cv::Point2f *vertices, size_t 
 
     Clipper2Lib::PathD subject;
     for (size_t i = 0; i < num_vertices; ++i) {
-        subject.push_back(Clipper2Lib::PointD(vertices[i].x, vertices[i].y));
+        subject.emplace_back(vertices[i].x, vertices[i].y);
     }
 
     double area = std::abs(Clipper2Lib::Area(subject));
@@ -154,7 +160,7 @@ std::vector<cv::Point2f> PPOCRDetector::unclipBox(cv::Point2f *vertices, size_t 
     if (!solution.empty() && !solution[0].empty()) {
         std::vector<cv::Point2f> temp_points;
         for (const auto &pt: solution[0]) {
-            temp_points.push_back(cv::Point2f(static_cast<float>(pt.x), static_cast<float>(pt.y)));
+            temp_points.emplace_back(static_cast<float>(pt.x), static_cast<float>(pt.y));
         }
 
         if (temp_points.size() >= 4) {
@@ -162,8 +168,8 @@ std::vector<cv::Point2f> PPOCRDetector::unclipBox(cv::Point2f *vertices, size_t 
             cv::Point2f rect_vertices[4];
             expanded_rect.points(rect_vertices);
 
-            for (int i = 0; i < 4; ++i) {
-                result.push_back(rect_vertices[i]);
+            for (auto rect_vertice: rect_vertices) {
+                result.push_back(rect_vertice);
             }
         } else {
             for (size_t i = 0; i < num_vertices; ++i) {
@@ -244,14 +250,22 @@ std::vector<DetectionBox> PPOCRDetector::detect(const std::string &output_path =
     return boxes;
 }
 
+// ====================================================
+//                      Recognizer
+// ====================================================
 
+/** Constructor of Recognizer
+ * @param origin_image original image opencv mat pointer
+ * @param det_resluts detect box pointer
+ * @param compiled_model openvino CompiledModel pointer
+ */
 PPOCRRecognizer::PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox> *det_resluts,
-                                 ov::InferRequest *infer_request) {
+                                 ov::CompiledModel *compiled_model) {
     this->origin_image = origin_image;
     boxes = det_resluts;
-    request = infer_request;
+    model = compiled_model;
     text_num = boxes->size();
-
+    ctc_dict = load_ctc_dict("fonts/ppocr_keys_v1.txt");
     std::sort(boxes->begin(), boxes->end(),
               [](const DetectionBox &a, const DetectionBox &b) {
                   return std::tie(a.points[0].y, a.points[0].x) < std::tie(b.points[0].y, b.points[0].x);
@@ -267,8 +281,8 @@ PPOCRRecognizer::PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox
     }
 }
 
-/** extract text images for reco input
- *
+/**
+ * @brief Extract text images via detect boxes
  */
 void PPOCRRecognizer::extractSubimage() {
     for (int i = 0; i < text_num; ++i) {
@@ -299,116 +313,186 @@ void PPOCRRecognizer::extractSubimage() {
     }
 }
 
-cv::Mat PPOCRRecognizer::normalize(const cv::Mat &input_img, float max_wh_ratio) {
-    const int imgC = 3;
-    const int imgH = 48;
-    int imgW = static_cast<int>(32 * max_wh_ratio);
+/**
+ *  @brief Resize text subimages to the fixed height
+ *  @return A Batch of pre-processed data
+ */
+std::vector<BatchUnit> PPOCRRecognizer::prepare_batches() {
+    std::vector<BatchUnit> result;
 
-    float h = input_img.rows;
-    float w = input_img.cols;
-    float ratio = w / h;
-    int resized_w = (std::ceil(imgH * ratio) > imgW) ? imgW : static_cast<int>(std::ceil(imgH * ratio));
+    int total = static_cast<int>(text_images.size());
+    for (int beg = 0; beg < total; beg += batch_num) {
+        int end = std::min(beg + batch_num, total);
+        int actual_batch = end - beg;
 
-    cv::Mat resized_img;
-    cv::resize(input_img, resized_img, cv::Size(resized_w, imgH), 0, 0, cv::INTER_LINEAR);
-
-    cv::Mat float_img;
-    resized_img.convertTo(float_img, CV_32F);
-    float_img = float_img / 255.0;
-    float_img = (float_img - 0.5) / 0.5;
-
-    cv::Mat padded_img = cv::Mat::zeros(imgH, imgW, CV_32FC3);
-    cv::Rect roi(0, 0, resized_w, imgH);
-    float_img.copyTo(padded_img(roi));
-
-    std::vector<cv::Mat> channels;
-    cv::split(padded_img, channels);
-
-    cv::Mat chw_img;
-    cv::vconcat(channels, chw_img);
-
-    return chw_img;
-}
-
-std::vector<cv::Mat> PPOCRRecognizer::batch_process_images(
-    const std::vector<cv::Mat>& img_crop_list,
-    const std::vector<int>& indices,
-    int start_index) {
-
-    int end_index = std::min(static_cast<int>(img_crop_list.size()), start_index + batch_num);
-
-    float max_wh_ratio = 0.0f;
-    for (int i = start_index; i < end_index; i++) {
-        int idx = indices[i];
-        float h = img_crop_list[idx].rows;
-        float w = img_crop_list[idx].cols;
-        float wh_ratio = w / h;
-        if (wh_ratio > max_wh_ratio) {
-            max_wh_ratio = wh_ratio;
+        float max_wh_ratio = 0.0f;
+        for (int i = beg; i < end; ++i) {
+            float wh_ratio = static_cast<float>(text_images[i].cols) / text_images[i].rows;
+            max_wh_ratio = std::max(max_wh_ratio, wh_ratio);
         }
-    }
 
-    std::vector<cv::Mat> batch;
-    for (int i = start_index; i < end_index; i++) {
-        int idx = indices[i];
-        cv::Mat processed = normalize(img_crop_list[idx], max_wh_ratio);
-        batch.push_back(processed);
-    }
-
-    return batch;
-}
-
-std::vector<rec_result> PPOCRRecognizer::process_text_regions(
-    const std::vector<cv::Mat> &img_crop_list,
-    int batch_size = 6) {
-    // 1. 计算所有图像的宽高比并排序
-    std::vector<std::pair<float, int>> wh_ratios;
-    for (int i = 0; i < img_crop_list.size(); i++) {
-        float h = img_crop_list[i].rows;
-        float w = img_crop_list[i].cols;
-        wh_ratios.emplace_back(w / h, i);
-    }
-
-    std::sort(wh_ratios.begin(), wh_ratios.end());
-
-    std::vector<int> indices;
-    for (const auto& pair : wh_ratios) {
-        indices.push_back(pair.second);
-    }
-
-    for (int beg_img_no = 0; beg_img_no < img_crop_list.size(); beg_img_no += batch_size) {
-        std::vector<cv::Mat> batch = batch_process_images(
-            img_crop_list, indices, beg_img_no);
-
-
-        int batch_count = batch.size();
-        int channels = 3;
-        int height = 48;
-        int width = batch[0].cols; // 所有图像宽度相同
-
-        // 创建连续内存存储批处理数据
-        batch_tensor.(batch_count * channels * height, width, CV_32F);
-
-        // 将每个处理后的图像复制到批处理张量中
-        for (int i = 0; i < batch_count; i++) {
-            cv::Mat roi = batch_tensor.rowRange(
-                i * channels * height,
-                (i + 1) * channels * height);
-            batch[i].copyTo(roi);
+        // Resize to the fixed height
+        std::vector<cv::Mat> resized;
+        std::vector<int> indices;
+        const int imgH = 48;
+        int imgW = static_cast<int>(32 * max_wh_ratio);
+        imgW = ((imgW + 31) / 32) * 32;
+        for (int i = beg; i < end; ++i) {
+            cv::Mat tmp;
+            cv::resize(text_images[i], tmp, cv::Size(imgW, imgH));
+            resized.emplace_back(tmp);
+            indices.emplace_back(i);
         }
+
+        // batch tensor
+        ov::Shape shape = {static_cast<size_t>(actual_batch), static_cast<size_t>(imgH), static_cast<size_t>(imgW), 3};
+        ov::Tensor tensor(ov::element::u8, shape);
+        size_t img_size = imgH * imgW * 3;
+        uint8_t *ptr = tensor.data<uint8_t>();
+
+        for (int i = 0; i < actual_batch; ++i) {
+            std::memcpy(ptr + i * img_size, resized[i].data, img_size * sizeof(uint8_t));
+        }
+
+        result.push_back({tensor, indices}); // Include indices for result mapping
     }
+    std::cout << "batch 1 shape: " << result[0].input_tensor.get_shape() << std::endl;
+
+    return result;
 }
 
 /**
- *
- * @return recognize results: texts and scores
+ *  @brief Run inference by batches,
+ *  @return Request pool for async inference
+ */
+std::vector<ov::InferRequest> PPOCRRecognizer::run_batches_async(const std::vector<BatchUnit> &batches) {
+    std::vector<ov::InferRequest> requests;
+    requests.reserve(batches.size());
+
+    for (const auto &batch: batches) {
+        ov::InferRequest request = model->create_infer_request();
+        request.set_input_tensor(batch.input_tensor);
+        request.start_async();
+        requests.push_back(std::move(request));
+    }
+
+    return requests;
+}
+
+std::vector<std::string> PPOCRRecognizer::load_ctc_dict(const std::string &path) {
+    std::ifstream file(path);
+    std::vector<std::string> dict;
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open CTC dictionary file: " + path);
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        // Remove potential carriage return and newline characters
+        if (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+            line.pop_back();
+        }
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        dict.push_back(line);
+    }
+
+    // Insert blank token at the beginning for CTC
+    dict.insert(dict.begin(), "blank");
+    return dict;
+}
+
+std::vector<rec_result> PPOCRRecognizer::decode_ctc_batch(
+    const float* data,
+    const ov::Shape& shape,  // [N, T, C]
+    const std::vector<std::string>& ctc_dict)
+{
+    std::vector<rec_result> results;
+    int N = static_cast<int>(shape[0]);
+    int T = static_cast<int>(shape[1]);
+    int C = static_cast<int>(shape[2]);
+
+    results.reserve(N);
+
+#pragma omp parallel for
+    for (int n = 0; n < N; ++n) {
+        std::string text;
+        float conf_sum = 0.0f;
+        int char_count = 0;
+        int last_index = -1;
+
+        for (int t = 0; t < T; ++t) {
+            const float* prob = data + (n * T + t) * C;
+
+            int max_index = 0;
+            float max_prob = prob[0];
+            for (int c = 1; c < C; ++c) {
+                if (prob[c] > max_prob) {
+                    max_prob = prob[c];
+                    max_index = c;
+                }
+            }
+
+            if (max_index == 0 || max_index == last_index) {
+                continue;  // blank or repeated
+            }
+
+            if (max_index < ctc_dict.size()) {
+#pragma omp critical
+                text += ctc_dict[max_index];
+                conf_sum += max_prob;
+                char_count += 1;
+            }
+
+            last_index = max_index;
+        }
+
+        float avg_score = char_count > 0 ? conf_sum / char_count : 0.0f;
+
+#pragma omp critical
+        results.emplace_back(rec_result{text, avg_score});
+    }
+
+    return results;
+}
+
+
+/**
+ * @brief Recognize Progress
+ * @return Recognize results: texts and confidences
  */
 std::vector<rec_result> PPOCRRecognizer::recognize() {
-    std::vector<rec_result> results;
+    std::vector<rec_result> final_results(text_num); // Pre-allocate with correct size
 
     extractSubimage();
 
-    process_text_regions(text_images);
+    auto batches = prepare_batches();
 
-    return results;
+    auto async_requests = run_batches_async(batches);
+
+    // Process results from all batches
+    for (size_t batch_idx = 0; batch_idx < async_requests.size(); ++batch_idx) {
+        async_requests[batch_idx].wait();
+
+        auto out_tensor = async_requests[batch_idx].get_output_tensor();
+        const float *output_data = out_tensor.data<float>();
+        auto shape = out_tensor.get_shape(); // [N, T, C]
+
+        std::cout << "output tensor shape:"<<shape << std::endl;
+        // Decode current batch
+        auto batch_results = decode_ctc_batch(output_data, shape, ctc_dict);
+
+        // Map batch results back to original positions using indices
+        const auto &batch_indices = batches[batch_idx].indices;
+        for (size_t i = 0; i < batch_results.size() && i < batch_indices.size(); ++i) {
+            int original_idx = batch_indices[i];
+            if (original_idx < static_cast<int>(final_results.size())) {
+                final_results[original_idx] = batch_results[i];
+            }
+        }
+    }
+
+    return final_results;
 }

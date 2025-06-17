@@ -1,16 +1,21 @@
-﻿#include <iostream>
+﻿#include <fstream>
+#include <iostream>
 #include <opencv2/opencv.hpp>
 #include <openvino/openvino.hpp>
 #include "infer.h"
 #include "interface.h"
 
 std::shared_ptr<ov::Model> init_Det_Model(std::shared_ptr<ov::Model> model, int rows, int cols);
-void get_Srceen_shot();
+
+std::shared_ptr<ov::Model> init_Rec_Model(std::shared_ptr<ov::Model> model);
 
 int main() {
-    get_Srceen_shot();
+    ScreenCapture capture;
     try {
-        cv::Mat origin_image = cv::imread("screenshot.png", cv::IMREAD_COLOR);
+        capture.StartCapture();
+        RECT rect = capture.GetSelectedRect();
+        cv::Mat origin_image = capture.CaptureScreenRegion(rect);
+        // cv::Mat origin_image = cv::imread("img.png");
         origin_image.convertTo(origin_image, CV_8UC1);
 
         const std::string output_path = "result.jpg";
@@ -22,23 +27,33 @@ int main() {
 
         auto det_model = core.read_model(det_model_path);
         auto rec_model = core.read_model(rec_model_path);
-
-        std::shared_ptr<ov::Model> ppp_model = init_Det_Model(det_model, origin_image.rows, origin_image.cols);
-        auto det_compiled_model = core.compile_model(ppp_model, device);
-
-        for (auto input_layer: rec_model->inputs()) {
+        for (const auto &input_layer: rec_model->inputs()) {
             auto input_shape = input_layer.get_partial_shape();
             input_shape[3] = -1;
             rec_model->reshape(input_shape);
         };
-        auto rec_compiled_model = core.compile_model(rec_model, "AUTO");
 
+        auto ppp_det = init_Det_Model(det_model, origin_image.rows, origin_image.cols);
+        auto det_compiled_model = core.compile_model(ppp_det, device);
+        auto det_infer_request = det_compiled_model.create_infer_request();
 
-        ov::InferRequest infer_request_det = det_compiled_model.create_infer_request();
-        PPOCRDetector detector(&origin_image, &infer_request_det);
+        auto ppp_rec = init_Rec_Model(rec_model);
+        auto rec_compiled_model = core.compile_model(ppp_rec, "GPU");
+
+        PPOCRDetector detector(&origin_image, &det_infer_request);
         auto boxes = detector.detect(output_path);
 
+        PPOCRRecognizer Recognizer(&origin_image, &boxes, &rec_compiled_model);
+        auto texts = Recognizer.recognize();
 
+        std::ofstream out("ocr_results.txt", std::ios::out | std::ios::binary);
+        out << "\xEF\xBB\xBF";
+
+        for (const auto& text : texts) {
+            out << text.text << " (score: " << text.score << ")" << std::endl;
+        }
+
+        out.close();
 
     } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
@@ -60,7 +75,7 @@ std::shared_ptr<ov::Model> init_Det_Model(std::shared_ptr<ov::Model> model, int 
 
     ppp.input()
             .preprocess()
-            .convert_element_type(ov::element::f32)
+            .convert_element_type(ov::element::f16)
             .convert_color(ov::preprocess::ColorFormat::RGB)
             .resize(ov::preprocess::ResizeAlgorithm::RESIZE_LINEAR,
                     static_cast<size_t>(640), static_cast<size_t>(640))
@@ -74,42 +89,22 @@ std::shared_ptr<ov::Model> init_Det_Model(std::shared_ptr<ov::Model> model, int 
     return model;
 }
 
-void get_Srceen_shot() {
-    GdiplusStartupInput gdiplusStartupInput;
-    ULONG_PTR gdiplusToken;
-    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+std::shared_ptr<ov::Model> init_Rec_Model(std::shared_ptr<ov::Model> model) {
+    ov::preprocess::PrePostProcessor ppp(model);
+    ppp.input().tensor()
+            .set_element_type(ov::element::u8)
+            .set_layout("NHWC")
+            .set_color_format(ov::preprocess::ColorFormat::BGR);
 
-    std::wcout << L"屏幕截图工具" << std::endl;
-    std::wcout << L"使用方法：" << std::endl;
-    std::wcout << L"1. 按下鼠标左键并拖拽选择截图区域" << std::endl;
-    std::wcout << L"2. 释放鼠标完成选择" << std::endl;
-    std::wcout << L"3. 按ESC键取消截图" << std::endl;
-    std::wcout << L"按任意键开始截图..." << std::endl;
+    ppp.input().preprocess()
+            .convert_element_type(ov::element::f32)
+            .convert_color(ov::preprocess::ColorFormat::RGB)
+            .mean({127.5f, 127.5f, 127.5f})
+            .scale({127.5f, 127.5f, 127.5f})
+            .convert_layout("NCHW");
 
-    system("pause");
+    ppp.input().model().set_layout("NCHW");
+    model = ppp.build();
 
-    ScreenCapture capture;
-
-    if (capture.StartCapture()) {
-        RECT rect = capture.GetSelectedRect();
-
-        if (rect.right > rect.left && rect.bottom > rect.top) {
-            std::wstring filename = L"screenshot.png";
-
-            if (capture.CaptureScreenRegion(rect, filename)) {
-                std::wcout << L"截图已保存为: " << filename << std::endl;
-                std::wcout << L"区域: (" << rect.left << ", " << rect.top
-                          << ") - (" << rect.right << ", " << rect.bottom << ")" << std::endl;
-            } else {
-                std::wcout << L"保存截图失败!" << std::endl;
-            }
-        } else {
-            std::wcout << L"未选择有效区域" << std::endl;
-        }
-    } else {
-        std::wcout << L"创建截图界面失败!" << std::endl;
-    }
-
-    // 清理GDI+
-    GdiplusShutdown(gdiplusToken);
+    return model;
 }
