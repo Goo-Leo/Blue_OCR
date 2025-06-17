@@ -265,7 +265,7 @@ PPOCRRecognizer::PPOCRRecognizer(cv::Mat *origin_image, std::vector<DetectionBox
     boxes = det_resluts;
     model = compiled_model;
     text_num = boxes->size();
-    ctc_dict = load_ctc_dict("fonts/ppocr_keys_v1.txt");
+    ctc_dict = load_ctc_dict("fonts/ppocrv5_dict.txt");
     std::sort(boxes->begin(), boxes->end(),
               [](const DetectionBox &a, const DetectionBox &b) {
                   return std::tie(a.points[0].y, a.points[0].x) < std::tie(b.points[0].y, b.points[0].x);
