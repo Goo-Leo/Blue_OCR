@@ -16,13 +16,12 @@ int main() {
         capture.StartCapture();
         RECT rect = capture.GetSelectedRect();
         cv::Mat origin_image = capture.CaptureScreenRegion(rect);
-        // cv::Mat origin_image = cv::imread("img.png");
         origin_image.convertTo(origin_image, CV_8UC1);
 
         const std::string output_path = "result.jpg";
-        const std::string device = "NPU";
-        const std::string det_model_path = "det_model.onnx";
-        const std::string rec_model_path = "rec_model.onnx";
+        const std::string device = "AUTO";
+        const std::string det_model_path = "../models/det_model.onnx";
+        const std::string rec_model_path = "../models/rec_model.onnx";
 
         ov::Core core;
 
@@ -39,7 +38,7 @@ int main() {
         auto det_infer_request = det_compiled_model.create_infer_request();
 
         auto ppp_rec = init_Rec_Model(rec_model);
-        auto rec_compiled_model = core.compile_model(ppp_rec, "GPU");
+        auto rec_compiled_model = core.compile_model(ppp_rec, "AUTO");
 
         PPOCRDetector detector(&origin_image, &det_infer_request);
         auto boxes = detector.detect(output_path);
@@ -47,12 +46,8 @@ int main() {
         PPOCRRecognizer Recognizer(&origin_image, &boxes, &rec_compiled_model);
         auto texts = Recognizer.recognize();
 
-        std::ofstream out("ocr_results.txt", std::ios::out | std::ios::binary);
-        out << "\xEF\xBB\xBF";
+        show_result(texts);
 
-        for (const auto &text: texts) {
-            out << text.text << " (score: " << text.score << ")" << std::endl;
-        }
     } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;

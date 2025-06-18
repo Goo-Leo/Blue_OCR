@@ -1,5 +1,6 @@
 *.jpg
 *.png
 cmake-build-debug-visual-studio
+/cmake-build-release-visual-studio/
 .idea
 /ocr_results.txt
