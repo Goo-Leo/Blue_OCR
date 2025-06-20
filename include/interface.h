@@ -9,7 +9,7 @@
 #include <shlwapi.h>
 #include <opencv2/opencv.hpp>
 #include "infer.h"
-#include "INIReader.h"
+#include "../third_party/inih/INIReader.h"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")

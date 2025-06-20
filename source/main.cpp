@@ -7,11 +7,11 @@
 #include <main.h>
 #include "infer.h"
 #include "interface.h"
-#include "INIReader.h"
+#include "../third_party/inih/INIReader.h"
 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    INIReader reader("config.ini");
+    INIReader reader("../config.ini");
 
     const std::string det_device = reader.Get("Device", "det_device", "CPU");
     const std::string rec_device = reader.Get("Device", "rec_device", "CPU");
