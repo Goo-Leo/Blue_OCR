@@ -22,26 +22,19 @@ cv::Mat PPOCRDetector::inference() {
                                              });
         std::memcpy(input_tensor.data<uint8_t>(), origin_image->data,
                     origin_image->total() * origin_image->elemSize());
-        // free
 
         request->set_input_tensor(input_tensor);
-        std::cout << "input shape: " << input_tensor.get_shape() << std::endl;
+        // std::cout << "input shape: " << input_tensor.get_shape() << std::endl;
 
-        auto start_time = std::chrono::high_resolution_clock::now();
+        // auto start_time = std::chrono::high_resolution_clock::now();
         request->infer();
-        auto end_time = std::chrono::high_resolution_clock::now();
+        // auto end_time = std::chrono::high_resolution_clock::now();
 
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        std::cout << "Inference time: " << duration.count() << " ms" << std::endl;
+        // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        // std::cout << "Inference time: " << duration.count() << " ms" << std::endl;
 
         auto output_tensor = request->get_output_tensor();
         auto shape = output_tensor.get_shape();
-
-        std::cout << "Output shape: ";
-        for (auto dim: shape) {
-            std::cout << dim << " ";
-        }
-        std::cout << std::endl;
 
         float *output_data = output_tensor.data<float>();
         cv::Mat output_mat(static_cast<int>(shape[2]), static_cast<int>(shape[3]), CV_32F, output_data);
@@ -68,7 +61,7 @@ std::vector<DetectionBox> PPOCRDetector::postProcess(const cv::Mat &prediction) 
         std::vector<std::vector<cv::Point> > contours;
         cv::findContours(binary_mask, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
 
-        std::cout << "Found " << contours.size() << " contours" << std::endl;
+        // std::cout << "Found " << contours.size() << " contours" << std::endl;
 
         // calculate boxes
         float scale_x = static_cast<float>(origin_image->cols) / static_cast<float>(prediction.cols);
@@ -117,7 +110,7 @@ std::vector<DetectionBox> PPOCRDetector::postProcess(const cv::Mat &prediction) 
             }
         }
 
-        std::cout << "Detected " << boxes.size() << " text regions" << std::endl;
+        // std::cout << "Detected " << boxes.size() << " text regions" << std::endl;
     } catch (const std::exception &e) {
         std::cerr << "Post-processing error: " << e.what() << std::endl;
     }
@@ -234,9 +227,7 @@ void PPOCRDetector::drawResults(cv::Mat &image, const std::vector<DetectionBox> 
     }
 }
 
-std::vector<DetectionBox> PPOCRDetector::detect(const std::string &output_path = "result.jpg") {
-    std::cout << "Image size: " << origin_image->size() << std::endl;
-
+std::vector<DetectionBox> PPOCRDetector::detect() {
     cv::Mat prediction = inference();
 
     std::vector<DetectionBox> boxes = postProcess(prediction);
@@ -404,10 +395,9 @@ std::vector<std::string> PPOCRRecognizer::load_ctc_dict(const std::string &path)
 }
 
 std::vector<rec_result> PPOCRRecognizer::decode_ctc_batch(
-    const float* data,
-    const ov::Shape& shape,  // [N, T, C]
-    const std::vector<std::string>& ctc_dict)
-{
+    const float *data,
+    const ov::Shape &shape, // [N, T, C]
+    const std::vector<std::string> &ctc_dict) {
     std::vector<rec_result> results;
     int N = static_cast<int>(shape[0]);
     int T = static_cast<int>(shape[1]);
@@ -423,7 +413,7 @@ std::vector<rec_result> PPOCRRecognizer::decode_ctc_batch(
         int last_index = -1;
 
         for (int t = 0; t < T; ++t) {
-            const float* prob = data + (n * T + t) * C;
+            const float *prob = data + (n * T + t) * C;
 
             int max_index = 0;
             float max_prob = prob[0];
@@ -435,7 +425,7 @@ std::vector<rec_result> PPOCRRecognizer::decode_ctc_batch(
             }
 
             if (max_index == 0 || max_index == last_index) {
-                continue;  // blank or repeated
+                continue; // blank or repeated
             }
 
             if (max_index < ctc_dict.size()) {

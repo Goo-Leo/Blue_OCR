@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 
+
 ScreenCapture::ScreenCapture() : overlayWnd(nullptr), isSelecting(false) {
     startPoint = {0, 0};
     endPoint = {0, 0};
@@ -186,6 +187,7 @@ cv::Mat ScreenCapture::CaptureScreenRegion(const RECT &rect) {
     DeleteDC(memDC);
     ReleaseDC(NULL, screenDC);
 
+    mat.convertTo(mat,CV_8UC1);
     return mat;
 }
 
@@ -218,7 +220,7 @@ int show_result(const std::vector<rec_result> &texts) {
 
     auto it = std::min_element(
         texts.begin(), texts.end(),
-        [](const rec_result& a, const rec_result& b) {
+        [](const rec_result &a, const rec_result &b) {
             if (a.score == 0) return false;
             if (b.score == 0) return true;
             return a.score < b.score;
@@ -235,7 +237,7 @@ int show_result(const std::vector<rec_result> &texts) {
 
     std::wstring commandLine = L"notepad.exe" L" \"" + std::wstring(filePath) + L"\"";
 
-    STARTUPINFOW si = { sizeof(si) };
+    STARTUPINFOW si = {sizeof(si)};
     PROCESS_INFORMATION pi;
 
     if (!CreateProcessW(
@@ -243,9 +245,8 @@ int show_result(const std::vector<rec_result> &texts) {
         &commandLine[0],
         NULL, NULL, FALSE,
         0, NULL, NULL,
-        &si, &pi))
-    {
-        std::wcerr << L"启动记事本失败，错误码：" << GetLastError() << std::endl;
+        &si, &pi)) {
+        std::wcerr << L"Error：" << GetLastError() << std::endl;
         return 1;
     }
 

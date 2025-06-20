@@ -33,6 +33,7 @@ struct rec_result {
 class PPOCRDetector {
 private:
     cv::Mat *origin_image;
+    std::shared_ptr<ov::Model>det_model;
     ov::InferRequest *request;
 
     const float det_threshold = 0.3f;
@@ -54,12 +55,12 @@ private:
     static void drawResults(cv::Mat &image, const std::vector<DetectionBox> &boxes);
 
 public:
-    PPOCRDetector(cv::Mat *image, ov::InferRequest *infer_request) {
+    PPOCRDetector(cv::Mat *image,ov::InferRequest *infer_request) {
         origin_image = image;
         request = infer_request;
     }
 
-    std::vector<DetectionBox> detect(const std::string &output_path);
+    std::vector<DetectionBox> detect();
 };
 
 

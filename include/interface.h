@@ -9,10 +9,12 @@
 #include <shlwapi.h>
 #include <opencv2/opencv.hpp>
 #include "infer.h"
+#include "INIReader.h"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "Shlwapi.lib")
+
 
 class ScreenCapture {
 private:
@@ -22,7 +24,8 @@ private:
     POINT endPoint;
     RECT selectedRect;
 
-    int GetEncoderClsid(const WCHAR* format, CLSID* pClsid);
+    int GetEncoderClsid(const WCHAR *format, CLSID *pClsid);
+
     bool CreateOverlayWindow();
 
 public:
@@ -36,7 +39,7 @@ public:
 
     RECT GetSelectedRect() const;
 
-    cv::Mat CaptureScreenRegion(const RECT& rect);
+    cv::Mat CaptureScreenRegion(const RECT &rect);
 };
 
 
