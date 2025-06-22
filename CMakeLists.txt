@@ -8,7 +8,7 @@ set(OpenVINO_DIR "C:/Program Files (x86)/Intel/openvino_2025.1.0/runtime/cmake")
 set(OpenCV_DIR "C:/Program Files/opencv/build")
 set(CLIPPER2_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/third_party/Clipper2Lib")
 set(INIH_DIR "${CMAKE_CURRENT_LIST_DIR}/third_party/inih")
-#set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 
 find_package(OpenVINO REQUIRED)
 find_package(OpenCV REQUIRED)
