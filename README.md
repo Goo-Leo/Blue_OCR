@@ -1,6 +1,6 @@
 # Blue_OCR
 
-A PaddleOCR Implement with OpenVINO and CPP
+A OCR Implement with OpenVINO and CPP
 
 因为先前买的新笔记本的CPU是Intel Ultra 9 185H，里面的NPU一直用不上，所以用OpenVINO自己写了个OCR工具，想用上这点算力来做点事情。
 
