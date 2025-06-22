@@ -4,7 +4,7 @@ A PaddleOCR Implement with OpenVINO and CPP
 
 因为先前买的新笔记本的CPU是Intel Ultra 9 185H，里面的NPU一直用不上，所以用OpenVINO自己写了个OCR工具，想用上这点算力来做点事情。
 
-原文本监测和识别模型来自[PaddleOCR V5](https://paddlepaddle.github.io/PaddleX/latest/pipeline_usage/tutorials/ocr_pipelines/OCR.html#1-ocr)，推理框架使用OpenVINO，因此暂时只支持Windows+Intel设备（CPU，GPU，NPU）进行推理。
+原文本监测和识别模型来自[PaddleOCR V5](https://paddlepaddle.github.io/PaddleX/latest/pipeline_usage/tutorials/ocr_pipelines/OCR.html#1-ocr)，推理框架使用OpenVINO，因此**暂时只支持Windows+Intel设备（CPU，GPU，NPU）进行推理。**
 
 
 
