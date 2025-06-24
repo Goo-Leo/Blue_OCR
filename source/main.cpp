@@ -36,12 +36,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         auto ppp_det = init_Det_Model(det_model, origin_image.rows, origin_image.cols);
         auto det_compiled_model = core.compile_model(ppp_det, det_device);
-        auto det_infer_request = det_compiled_model.create_infer_request();
 
         auto ppp_rec = init_Rec_Model(rec_model);
         auto rec_compiled_model = core.compile_model(ppp_rec, rec_device);
 
-        PPOCRDetector detector(&origin_image, &det_infer_request);        auto boxes = detector.detect();
+        PPOCRDetector detector(&origin_image, &det_compiled_model);
+        auto boxes = detector.detect();
 
         PPOCRRecognizer Recognizer(&origin_image, &boxes, &rec_compiled_model);
         auto texts = Recognizer.recognize();

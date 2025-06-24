@@ -22,18 +22,19 @@ cv::Mat PPOCRDetector::inference() {
                                              });
         std::memcpy(input_tensor.data<uint8_t>(), origin_image->data,
                     origin_image->total() * origin_image->elemSize());
+        auto request = det_model->create_infer_request();
 
-        request->set_input_tensor(input_tensor);
+        request.set_input_tensor(input_tensor);
         // std::cout << "input shape: " << input_tensor.get_shape() << std::endl;
 
         // auto start_time = std::chrono::high_resolution_clock::now();
-        request->infer();
+        request.infer();
         // auto end_time = std::chrono::high_resolution_clock::now();
 
         // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         // std::cout << "Inference time: " << duration.count() << " ms" << std::endl;
 
-        auto output_tensor = request->get_output_tensor();
+        auto output_tensor = request.get_output_tensor();
         auto shape = output_tensor.get_shape();
 
         float *output_data = output_tensor.data<float>();
@@ -396,56 +397,81 @@ std::vector<std::string> PPOCRRecognizer::load_ctc_dict(const std::string &path)
 
 std::vector<rec_result> PPOCRRecognizer::decode_ctc_batch(
     const float *data,
-    const ov::Shape &shape, // [N, T, C]
+    const ov::Shape &shape,  // [N, T, C]
     const std::vector<std::string> &ctc_dict) {
-    std::vector<rec_result> results;
+
     int N = static_cast<int>(shape[0]);
     int T = static_cast<int>(shape[1]);
     int C = static_cast<int>(shape[2]);
 
-    results.reserve(N);
+    std::vector<rec_result> results(N);
 
-#pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic) num_threads(std::min(N, omp_get_max_threads()))
     for (int n = 0; n < N; ++n) {
         std::string text;
-        float conf_sum = 0.0f;
+        text.reserve(T / 2);  // 预分配字符串空间，避免频繁重分配
+
+        float conf_sum = 0.f;
         int char_count = 0;
-        int last_index = -1;
+        int last_index = 0;
 
         for (int t = 0; t < T; ++t) {
             const float *prob = data + (n * T + t) * C;
 
             int max_index = 0;
             float max_prob = prob[0];
-            for (int c = 1; c < C; ++c) {
+
+            int c = 1;
+            for (; c < C - 3; c += 4) {
+                if (prob[c] > max_prob) {
+                    max_prob = prob[c];
+                    max_index = c;
+                }
+                if (prob[c + 1] > max_prob) {
+                    max_prob = prob[c + 1];
+                    max_index = c + 1;
+                }
+                if (prob[c + 2] > max_prob) {
+                    max_prob = prob[c + 2];
+                    max_index = c + 2;
+                }
+                if (prob[c + 3] > max_prob) {
+                    max_prob = prob[c + 3];
+                    max_index = c + 3;
+                }
+            }
+
+            for (; c < C; ++c) {
                 if (prob[c] > max_prob) {
                     max_prob = prob[c];
                     max_index = c;
                 }
             }
 
-            if (max_index == 0 || max_index == last_index) {
-                continue; // blank or repeated
-            }
-
-            if (max_index < ctc_dict.size()) {
-#pragma omp critical
-                text += ctc_dict[max_index];
-                conf_sum += max_prob;
-                char_count += 1;
+            if (max_index > 0 && (t == 0 || max_index != last_index)) {
+                if (max_index < static_cast<int>(ctc_dict.size())) {
+                    text += ctc_dict[max_index];
+                    conf_sum += max_prob;
+                    ++char_count;
+                }
             }
 
             last_index = max_index;
         }
 
-        float avg_score = char_count > 0 ? conf_sum / char_count : 0.0f;
+        float avg_score = char_count > 0 ? conf_sum / char_count : 0.f;
 
-#pragma omp critical
-        results.emplace_back(rec_result{text, avg_score});
+        // 处理NaN情况
+        if (std::isnan(avg_score)) {
+            avg_score = 0.f;
+        }
+
+        results[n] = rec_result{std::move(text), avg_score};
     }
 
     return results;
 }
+
 
 
 /**

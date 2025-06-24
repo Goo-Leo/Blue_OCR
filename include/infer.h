@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <clipper2/clipper.h>
+#include <omp.h>
 #include <opencv2/opencv.hpp>
 #include <openvino/openvino.hpp>
 
@@ -33,8 +34,8 @@ struct rec_result {
 class PPOCRDetector {
 private:
     cv::Mat *origin_image;
-    std::shared_ptr<ov::Model>det_model;
-    ov::InferRequest *request;
+    ov::CompiledModel *det_model;
+    // ov::InferRequest *request;
 
     const float det_threshold = 0.3f;
     const float score_threshold = 0.7f;
@@ -55,9 +56,13 @@ private:
     static void drawResults(cv::Mat &image, const std::vector<DetectionBox> &boxes);
 
 public:
-    PPOCRDetector(cv::Mat *image,ov::InferRequest *infer_request) {
+    // PPOCRDetector(cv::Mat *image,ov::InferRequest *infer_request) {
+    //     origin_image = image;
+    //     request = infer_request;
+    // }
+    PPOCRDetector(cv::Mat *image, ov::CompiledModel *compiledmodel) {
         origin_image = image;
-        request = infer_request;
+        det_model = compiledmodel;
     }
 
     std::vector<DetectionBox> detect();
@@ -95,6 +100,5 @@ public:
 
     std::vector<rec_result> recognize();
 };
-
 
 #endif //INFER_H

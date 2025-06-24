@@ -37,6 +37,7 @@ add_executable(Blue_OCR WIN32
         source/interface.cpp
 )
 
+#target_precompile_headers(Blue_OCR PRIVATE "pch.h")
 target_include_directories(clipper2 PUBLIC ${CLIPPER2_SRC_DIR}/include)
 target_link_libraries(Blue_OCR openvino::runtime ${OpenCV_LIBS} clipper2 inih)
 
