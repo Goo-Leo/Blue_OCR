@@ -15,7 +15,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     const std::string det_device = reader.Get("Device", "det_device", "CPU");
     const std::string rec_device = reader.Get("Device", "rec_device", "CPU");
-    const std::string det_model_path = reader.Get("Model_Paths", "det_model", "../models/det_model.onnx");
+    const std::string det_model_path = reader.Get("Model_Paths", "det_model", "../models/det_model/det_model.onnx");
     const std::string rec_model_path = reader.Get("Model_Paths", "rec_model", "../models/rec_model.onnx");
 
     try {
