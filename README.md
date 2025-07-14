@@ -8,6 +8,14 @@ A OCR Implement with OpenVINO and CPP
 
 
 
+## 模型
+
+det_model目录下存放了默认的fp16模型和int8量化模型，若想要更好的速度可以使用量化模型，在主目录下**config.ini**文件中更改det_model的值。
+
+rec_model目录下暂时只有fp16的模型，后续会添加QAT之后的int8模型。
+
+
+
 ## 使用说明
 
 执行一次bin目录下的exe文件，可以自由截取一张图片进行推理，结果会用记事本弹出。目前交互方式比较简单，推荐整进环境变量在Terminal调用，或者整进Powertoys去用快捷键调用。
