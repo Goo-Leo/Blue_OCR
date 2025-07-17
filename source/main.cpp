@@ -15,8 +15,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     const std::string det_device = reader.Get("Device", "det_device", "CPU");
     const std::string rec_device = reader.Get("Device", "rec_device", "CPU");
-    const std::string det_model_path = reader.Get("Model_Paths", "det_model", "../models/det_model/det_model.onnx");
-    const std::string rec_model_path = reader.Get("Model_Paths", "rec_model", "../models/rec_model.onnx");
+    const std::string det_model_path = reader.Get("Model_Paths", "det_model", "../models/det_model/det_model.xml");
+    const std::string rec_model_path = reader.Get("Model_Paths", "rec_model", "../models/rec_model/rec_model.xml");
 
     try {
         ScreenCapture capture;
@@ -38,7 +38,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         auto det_compiled_model = core.compile_model(ppp_det, det_device);
 
         auto ppp_rec = init_Rec_Model(rec_model);
-        auto rec_compiled_model = core.compile_model(ppp_rec, rec_device);
+        auto rec_compiled_model = core.compile_model(ppp_rec, rec_device, ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT));
 
         PPOCRDetector detector(&origin_image, &det_compiled_model);
         auto boxes = detector.detect();

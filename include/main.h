@@ -21,7 +21,7 @@ std::shared_ptr<ov::Model> init_Det_Model(std::shared_ptr<ov::Model> model, int 
 
     ppp.input()
             .preprocess()
-            .convert_element_type(ov::element::f16)
+            .convert_element_type(ov::element::f32)
             .convert_color(ov::preprocess::ColorFormat::RGB)
             .resize(ov::preprocess::ResizeAlgorithm::RESIZE_LINEAR,
                     static_cast<size_t>(640), static_cast<size_t>(640))

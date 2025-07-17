@@ -10,7 +10,11 @@ A OCR Implement with OpenVINO and CPP
 
 ## 模型
 
-det_model目录下存放了默认的fp16模型和int8量化模型，若想要更好的速度可以使用量化模型，在主目录下**config.ini**文件中更改det_model的值。
+det_model目录下存放了默认的fp16模型和int8量化模型，若想要更好的速度可以使用量化模型，在主目录下**config.ini**文件中更改det_model的值。int8相对fp16的加速和带宽优化如下：
+
+![img.png](pictures/img.png)
+
+
 
 rec_model目录下暂时只有fp16的模型，后续会添加QAT之后的int8模型。
 
