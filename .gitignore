@@ -1,5 +1,4 @@
 *.jpg
-*.png
 cmake-build-debug-visual-studio
 /cmake-build-release-ninja/
 .idea
